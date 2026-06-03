@@ -1,0 +1,13 @@
+company:
+  name: "Demo Company"
+  sector: "PME technologie"
+  country: "France"
+  assets:
+    technologies:
+      - "WordPress"
+      - "Fortinet"
+      - "Microsoft Exchange"
+    domains:
+      - "demo-company.com"
+    keywords:
+      - "Demo Company"

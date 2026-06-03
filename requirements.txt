@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+requests
+python-dotenv
+feedparser
+streamlit
+jinja2
+PyYAML
+apscheduler
