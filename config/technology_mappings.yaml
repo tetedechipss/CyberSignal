@@ -1,0 +1,42 @@
+fortinet:
+  vendor: fortinet
+
+fortios:
+  vendor: fortinet
+  products:
+    - fortios
+
+citrix:
+  vendor: citrix
+
+netscaler:
+  vendor: citrix
+  products:
+    - netscaler
+    - netscaler_gateway
+    - citrix_adc
+
+microsoft exchange:
+  vendor: microsoft
+  products:
+    - exchange_server
+
+exchange:
+  vendor: microsoft
+  products:
+    - exchange_server
+
+ivanti connect secure:
+  vendor: ivanti
+  products:
+    - connect_secure
+
+wordpress:
+  vendor: wordpress
+  products:
+    - wordpress
+
+passbolt:
+  vendor: passbolt
+  products:
+    - passbolt

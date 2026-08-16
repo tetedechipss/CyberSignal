@@ -1,9 +1,12 @@
 from datetime import datetime
 from pathlib import Path
+
 from sqlmodel import Session, select
 
 from app.database import engine
-from app.models import Company, Asset, Finding, Report
+from app.models import Asset, Company, Report
+from app.services.cve_presentation import NVD_CVE_URL, format_company_finding_rows
+from app.services.cve_repository import get_company_cve_findings
 
 
 def slugify(value: str) -> str:
@@ -22,100 +25,86 @@ def generate_company_report(company_id: int) -> str:
 
     with Session(engine) as session:
         company = session.get(Company, company_id)
-
         if not company:
             raise ValueError(f"Company introuvable: {company_id}")
 
         assets = session.exec(
             select(Asset).where(Asset.company_id == company_id)
         ).all()
-
-        findings = session.exec(
-            select(Finding)
-            .where(Finding.company_id == company_id)
-            .order_by(Finding.score.desc())
-        ).all()
+        finding_records = get_company_cve_findings(session, company_id)
+        rows = format_company_finding_rows(finding_records)
 
         today = datetime.now().strftime("%Y-%m-%d")
         filename = f"{slugify(company.name)}_{today}.md"
         path = reports_dir / filename
-
-        lines = []
-        lines.append(f"# Cyber Exposure Brief — {company.name}")
-        lines.append("")
-        lines.append(f"Date : {today}")
-        lines.append(f"Secteur : {company.sector or 'Non renseigné'}")
-        lines.append(f"Pays : {company.country or 'Non renseigné'}")
-        lines.append("")
-        lines.append("## Assets surveillés")
-        lines.append("")
-
-        if assets:
-            for asset in assets:
-                lines.append(f"- **{asset.asset_type}** : {asset.value}")
-        else:
-            lines.append("- Aucun asset renseigné")
-
-        lines.append("")
-        lines.append("## Résumé exécutif")
-        lines.append("")
-
-        critical_count = len([f for f in findings if f.severity == "critical"])
-        high_count = len([f for f in findings if f.severity == "high"])
-        medium_count = len([f for f in findings if f.severity == "medium"])
-
-        lines.append(
-            f"{len(findings)} signaux détectés : "
-            f"{critical_count} critiques, {high_count} élevés, {medium_count} moyens."
+        kev_count = sum(1 for row in rows if row["KEV"])
+        critical_cvss_count = sum(
+            1
+            for row in rows
+            if isinstance(row["CVSS"], (int, float)) and row["CVSS"] >= 9.0
         )
 
-        lines.append("")
-        lines.append("## Findings prioritaires")
-        lines.append("")
-
-        if not findings:
-            lines.append("Aucun finding détecté pour le moment.")
+        lines = [
+            f"# Cyber Exposure Brief - {company.name}",
+            "",
+            f"Date : {today}",
+            f"Secteur : {company.sector or 'Non renseigne'}",
+            f"Pays : {company.country or 'Non renseigne'}",
+            "",
+            "## Assets surveilles",
+            "",
+        ]
+        if assets:
+            lines.extend(f"- **{asset.asset_type}** : {asset.value}" for asset in assets)
         else:
-            for index, finding in enumerate(findings[:20], start=1):
-                lines.append(f"### {index}. {finding.title}")
-                lines.append("")
-                lines.append(f"- Sévérité : **{finding.severity}**")
-                lines.append(f"- Score : **{finding.score}/100**")
-                lines.append(f"- Confiance : **{finding.confidence}/100**")
-                lines.append(f"- Source : {finding.source}")
+            lines.append("- Aucun asset renseigne")
 
-                if finding.related_asset:
-                    lines.append(f"- Asset concerné : {finding.related_asset}")
-
-                if finding.cve_id:
-                    lines.append(f"- CVE : {finding.cve_id}")
-
-                if finding.url:
-                    lines.append(f"- URL : {finding.url}")
-
-                lines.append("")
-                lines.append("**Description :**")
-                lines.append("")
-                lines.append(finding.description or "Pas de description.")
-                lines.append("")
-                lines.append("**Action recommandée :**")
-                lines.append("")
+        lines.extend(
+            [
+                "",
+                "## Resume executif",
+                "",
+                f"{len(rows)} vulnerabilites detectees, dont {kev_count} KEV et "
+                f"{critical_cvss_count} avec un CVSS superieur ou egal a 9.0.",
+                "",
+                "## Vulnerabilites detectees",
+                "",
+            ]
+        )
+        if not rows:
+            lines.append("Aucune vulnerabilite detectee pour le moment.")
+        else:
+            lines.append(
+                "| Technology | CVE | Date publication | Vendor | Product | CVSS | "
+                "EPSS | EPSS percentile | KEV |"
+            )
+            lines.append("|---|---|---|---|---|---:|---:|---:|:---:|")
+            for row in rows:
+                cve_id = row["CVE"]
+                cve_link = f"[{cve_id}]({NVD_CVE_URL}/{cve_id})"
                 lines.append(
-                    "Vérifier si l'asset concerné est utilisé et exposé. "
-                    "Si oui, confirmer la version installée, vérifier les correctifs disponibles "
-                    "et prioriser la remédiation selon la criticité."
+                    f"| {row['Technology']} | {cve_link} | {row['Date publication']} | "
+                    f"{row['Vendor']} | {row['Product']} | {row['CVSS']} | "
+                    f"{row['EPSS']} | {row['EPSS percentile']} | {row['KEV']} |"
                 )
-                lines.append("")
+
+            lines.extend(
+                [
+                    "",
+                    "## Action recommandee",
+                    "",
+                    "Verifier si les technologies concernees sont utilisees et exposees, "
+                    "confirmer les versions installees et appliquer les correctifs disponibles. "
+                    "Prioriser les CVE KEV, les CVSS eleves et les probabilites EPSS fortes.",
+                ]
+            )
 
         path.write_text("\n".join(lines), encoding="utf-8")
-
         report = Report(
             company_id=company_id,
-            summary=f"{len(findings)} findings détectés",
+            summary=f"{len(rows)} vulnerabilites detectees",
             file_path=str(path),
         )
-
         session.add(report)
         session.commit()
-
         return str(path)

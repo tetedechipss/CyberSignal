@@ -46,3 +46,45 @@ class Report(SQLModel, table=True):
     summary: Optional[str] = None
     file_path: str
     created_at: str = Field(default_factory=utcnow)
+
+
+class CVE(SQLModel, table=True):
+    __tablename__ = "cves"
+
+    cve_id: str = Field(primary_key=True)
+    published_at: Optional[str] = Field(default=None, index=True)
+    last_modified_at: Optional[str] = Field(default=None, index=True)
+    cvss: Optional[float] = None
+    epss: Optional[float] = None
+    epss_percentile: Optional[float] = None
+    kev: bool = Field(default=False)
+    source: str = Field(default="NVD")
+    created_at: str = Field(default_factory=utcnow)
+    updated_at: str = Field(default_factory=utcnow)
+
+
+class CVEProduct(SQLModel, table=True):
+    __tablename__ = "cve_products"
+
+    cve_id: str = Field(foreign_key="cves.cve_id", primary_key=True)
+    vendor: str = Field(primary_key=True, index=True)
+    product: str = Field(primary_key=True, index=True)
+
+
+class CVESyncState(SQLModel, table=True):
+    __tablename__ = "cve_sync_state"
+
+    name: str = Field(primary_key=True)
+    status: str = Field(default="idle")
+    cursor_at: Optional[str] = None
+    last_successful_at: Optional[str] = None
+    last_error: Optional[str] = None
+    updated_at: str = Field(default_factory=utcnow)
+
+
+class CompanyIgnoredCVE(SQLModel, table=True):
+    __tablename__ = "company_ignored_cves"
+
+    company_id: int = Field(foreign_key="company.id", primary_key=True)
+    cve_id: str = Field(foreign_key="cves.cve_id", primary_key=True)
+    created_at: str = Field(default_factory=utcnow)
